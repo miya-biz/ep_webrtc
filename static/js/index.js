@@ -592,7 +592,10 @@ exports.rtc = new class {
           // initialize sora client
           this._soraClient = new SoraClient(
               this._settings.signalingUrls,
-              `${this._pad.getPadId()}@${this._settings.projectId}`
+              `${this._pad.getPadId()}@${this._settings.projectId}`,
+              {
+                spotlight: true, // enable spotlight
+              }
           );
           this._soraClient.addEventListener('track', (e) => {
             const remoteStream = e.detail.streams[0];
@@ -606,8 +609,28 @@ exports.rtc = new class {
             debug(`*find user id ${userId} of stream ${remoteStream.id}`);
             this.getPeerConnection(userId).trackStream(remoteStream);
           });
+          this._soraClient.addEventListener('focused', (e) => {
+            debug(`*spotlight focused, client id = ${e.detail.client_id}`);
+            const userId = this._clientIdToUserId.get(e.detail.client_id);
+            if (userId == null) return;
+            const $videoContainer = $(`#container_${getVideoId(userId)}`);
+            if ($videoContainer.length === 0) return;
+            // show highlight
+            $videoContainer.find('.highlight').css({display: ''});
+          });
+          this._soraClient.addEventListener('unfocused', (e) => {
+            debug(`*spotlight unfocused, client id = ${e.detail.client_id}`);
+            const userId = this._clientIdToUserId.get(e.detail.client_id);
+            if (userId == null) return;
+            const $videoContainer = $(`#container_${getVideoId(userId)}`);
+            if ($videoContainer.length === 0) return;
+            // hide highlight
+            $videoContainer.find('.highlight').css({display: 'none'});
+          });
           await this._soraClient.connect(this._localTracks.stream);
           debug(`*sora client connected, my clientid is ${this._soraClient.clientId}`);
+          // save my client id
+          this._clientIdToUserId.set(this._soraClient.clientId, this.getUserId());
           this.publish(null, true);
         } finally {
           $checkbox.prop('disabled', false);
@@ -729,6 +752,7 @@ exports.rtc = new class {
         (...args) => debug(`(${isLocal ? 'self-view' : `peer ${userId}`} interface)`, ...args);
     _debug('adding interface');
     const videoId = getVideoId(userId);
+    const $highlight = $('<div>').addClass('highlight').css({display: 'none'});
     const $name = $('<div>').addClass('user-name');
     const $video = $('<video>')
         .attr({
@@ -752,6 +776,7 @@ exports.rtc = new class {
         .addClass('video-container')
         .toggleClass('local-user', isLocal)
         .css({width: '0', height: '0'})
+        .append($highlight)
         .append($name)
         .append($video)
         .append($interface)
